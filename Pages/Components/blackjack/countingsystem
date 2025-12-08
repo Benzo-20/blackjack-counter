@@ -1,0 +1,68 @@
+// Card counting system definitions
+export const COUNTING_SYSTEMS = {
+  'Hi-Lo': {
+    name: 'Hi-Lo',
+    tags: { '2': 1, '3': 1, '4': 1, '5': 1, '6': 1, '7': 0, '8': 0, '9': 0, '10': -1, 'J': -1, 'Q': -1, 'K': -1, 'A': -1 },
+    balanced: true,
+    efficiency: { betting: 0.97, playing: 0.51, insurance: 0.76 }
+  },
+  'KO': {
+    name: 'Knock-Out',
+    tags: { '2': 1, '3': 1, '4': 1, '5': 1, '6': 1, '7': 1, '8': 0, '9': 0, '10': -1, 'J': -1, 'Q': -1, 'K': -1, 'A': -1 },
+    balanced: false,
+    efficiency: { betting: 0.98, playing: 0.55, insurance: 0.78 }
+  },
+  'Hi-Opt I': {
+    name: 'Hi-Opt I',
+    tags: { '2': 0, '3': 1, '4': 1, '5': 1, '6': 1, '7': 0, '8': 0, '9': 0, '10': -1, 'J': -1, 'Q': -1, 'K': -1, 'A': 0 },
+    balanced: true,
+    efficiency: { betting: 0.88, playing: 0.61, insurance: 0.85 }
+  },
+  'Hi-Opt II': {
+    name: 'Hi-Opt II',
+    tags: { '2': 1, '3': 1, '4': 2, '5': 2, '6': 1, '7': 1, '8': 0, '9': 0, '10': -2, 'J': -2, 'Q': -2, 'K': -2, 'A': 0 },
+    balanced: true,
+    efficiency: { betting: 0.91, playing: 0.67, insurance: 0.91 }
+  },
+  'Zen': {
+    name: 'Zen Count',
+    tags: { '2': 1, '3': 1, '4': 2, '5': 2, '6': 2, '7': 1, '8': 0, '9': 0, '10': -2, 'J': -2, 'Q': -2, 'K': -2, 'A': -1 },
+    balanced: true,
+    efficiency: { betting: 0.96, playing: 0.63, insurance: 0.85 }
+  },
+  'Omega II': {
+    name: 'Omega II',
+    tags: { '2': 1, '3': 1, '4': 2, '5': 2, '6': 2, '7': 1, '8': 0, '9': -1, '10': -2, 'J': -2, 'Q': -2, 'K': -2, 'A': 0 },
+    balanced: true,
+    efficiency: { betting: 0.92, playing: 0.67, insurance: 0.93 }
+  }
+};
+
+export function getCountingSystem(systemName) {
+  return COUNTING_SYSTEMS[systemName] || COUNTING_SYSTEMS['Hi-Lo'];
+}
+
+export function calculateRunningCount(cards, systemName = 'Hi-Lo') {
+  const system = getCountingSystem(systemName);
+  let rc = 0;
+  
+  cards.forEach(card => {
+    const normalized = ['J', 'Q', 'K'].includes(card) ? '10' : card;
+    rc += system.tags[normalized] || 0;
+  });
+  
+  return rc;
+}
+
+export function calculateTrueCount(runningCount, decksRemaining, systemName = 'Hi-Lo') {
+  const system = getCountingSystem(systemName);
+  
+  if (decksRemaining <= 0) return 0;
+  
+  // Unbalanced systems like KO don't use true count in the traditional sense
+  if (!system.balanced) {
+    return runningCount; // Return running count directly for KO
+  }
+  
+  return runningCount / decksRemaining;
+}
