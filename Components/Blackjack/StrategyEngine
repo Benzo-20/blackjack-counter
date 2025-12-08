@@ -1,0 +1,356 @@
+// Complete rule-aware basic strategy and deviation engine
+
+// Illustrious 18 indices (Hi-Lo system)
+const ILLUSTRIOUS_18 = [
+  { hand: 'insurance', dealer: 'A', tc: 3, action: 'take' },
+  { hand: '16', handType: 'hard', dealer: 10, tc: 0, action: 'stand', default: 'hit' },
+  { hand: '15', handType: 'hard', dealer: 10, tc: 4, action: 'stand', default: 'hit' },
+  { hand: '20', handType: 'pairs', dealer: 5, tc: 5, action: 'split', default: 'stand' },
+  { hand: '20', handType: 'pairs', dealer: 6, tc: 4, action: 'split', default: 'stand' },
+  { hand: '10', handType: 'hard', dealer: 10, tc: 4, action: 'double', default: 'hit' },
+  { hand: '12', handType: 'hard', dealer: 3, tc: 2, action: 'stand', default: 'hit' },
+  { hand: '12', handType: 'hard', dealer: 2, tc: 3, action: 'stand', default: 'hit' },
+  { hand: '11', handType: 'hard', dealer: 'A', tc: 1, action: 'double', default: 'hit' },
+  { hand: '9', handType: 'hard', dealer: 2, tc: 1, action: 'double', default: 'hit' },
+  { hand: '10', handType: 'hard', dealer: 'A', tc: 4, action: 'double', default: 'hit' },
+  { hand: '9', handType: 'hard', dealer: 7, tc: 3, action: 'double', default: 'hit' },
+  { hand: '16', handType: 'hard', dealer: 9, tc: 5, action: 'stand', default: 'hit' },
+  { hand: '13', handType: 'hard', dealer: 2, tc: -1, action: 'hit', default: 'stand' },
+  { hand: '12', handType: 'hard', dealer: 4, tc: 0, action: 'stand', default: 'hit' },
+  { hand: '12', handType: 'hard', dealer: 5, tc: -2, action: 'hit', default: 'stand' },
+  { hand: '12', handType: 'hard', dealer: 6, tc: -1, action: 'hit', default: 'stand' },
+  { hand: '13', handType: 'hard', dealer: 3, tc: -2, action: 'hit', default: 'stand' }
+];
+
+export function getBasicStrategyAction(handType, handValue, dealerCard, rules) {
+  const dealer = dealerCard === 'A' ? 11 : parseInt(dealerCard);
+  
+  // Check surrender first
+  if (rules.surrender !== 'none') {
+    const surrenderAction = checkSurrender(handType, handValue, dealer, rules);
+    if (surrenderAction) return surrenderAction;
+  }
+  
+  if (handType === 'pairs') {
+    return getPairStrategy(handValue, dealer, rules);
+  } else if (handType === 'soft') {
+    return getSoftStrategy(parseInt(handValue), dealer, rules);
+  } else {
+    return getHardStrategy(parseInt(handValue), dealer, rules);
+  }
+}
+
+function checkSurrender(handType, handValue, dealer, rules) {
+  const v = parseInt(handValue);
+  
+  // Early surrender (before dealer checks for blackjack)
+  if (rules.surrender === 'early-both' || rules.surrender === 'early-10' || rules.surrender === 'early-ace') {
+    if (handType === 'hard') {
+      // Early surrender vs 10
+      if ((rules.surrender === 'early-both' || rules.surrender === 'early-10') && dealer === 10) {
+        if (v === 14 || v === 15 || v === 16) return 'surrender';
+        if (v === 5 || v === 6 || v === 7) return 'surrender'; // Weak doubles
+      }
+      // Early surrender vs Ace
+      if ((rules.surrender === 'early-both' || rules.surrender === 'early-ace') && dealer === 11) {
+        if (v === 5 || v === 6 || v === 7 || v === 12 || v === 13 || v === 14 || v === 15 || v === 16 || v === 17) {
+          return 'surrender';
+        }
+      }
+    }
+  }
+  
+  // Late surrender
+  if (rules.surrender === 'late') {
+    if (handType === 'hard') {
+      if (v === 16 && [9, 10, 11].includes(dealer)) return 'surrender';
+      if (v === 15 && dealer === 10) return 'surrender';
+    }
+  }
+  
+  return null;
+}
+
+function getHardStrategy(value, dealer, rules) {
+  if (value >= 17) return 'stand';
+  
+  if (value === 16) {
+    return [2, 3, 4, 5, 6].includes(dealer) ? 'stand' : 'hit';
+  }
+  
+  if (value === 15) {
+    return [2, 3, 4, 5, 6].includes(dealer) ? 'stand' : 'hit';
+  }
+  
+  if (value === 14 || value === 13) {
+    return [2, 3, 4, 5, 6].includes(dealer) ? 'stand' : 'hit';
+  }
+  
+  if (value === 12) {
+    return [4, 5, 6].includes(dealer) ? 'stand' : 'hit';
+  }
+  
+  if (value === 11) {
+    // Check double restrictions
+    if (canDouble(11, rules)) {
+      return 'double';
+    }
+    return 'hit';
+  }
+  
+  if (value === 10) {
+    if (canDouble(10, rules)) {
+      return [2, 3, 4, 5, 6, 7, 8, 9].includes(dealer) ? 'double' : 'hit';
+    }
+    return 'hit';
+  }
+  
+  if (value === 9) {
+    if (canDouble(9, rules)) {
+      return [3, 4, 5, 6].includes(dealer) ? 'double' : 'hit';
+    }
+    return 'hit';
+  }
+  
+  if (value === 8) {
+    if (canDouble(8, rules) && rules.doubleAllowed === '8-11') {
+      return [5, 6].includes(dealer) ? 'double' : 'hit';
+    }
+    return 'hit';
+  }
+  
+  return 'hit';
+}
+
+function getSoftStrategy(value, dealer, rules) {
+  // value represents the non-ace card (e.g., A,8 = value 8)
+  
+  if (value === 9 || value === 10) return 'stand'; // A,9 and A,10
+  
+  if (value === 8) {
+    if (canDoubleSoft(rules)) {
+      return [2, 3, 4, 5, 6].includes(dealer) ? 'double' : 'stand';
+    }
+    return 'stand';
+  }
+  
+  if (value === 7) {
+    if (canDoubleSoft(rules)) {
+      if ([3, 4, 5, 6].includes(dealer)) return 'double';
+      if ([2, 7, 8].includes(dealer)) return 'stand';
+      return 'hit';
+    }
+    return [2, 7, 8].includes(dealer) ? 'stand' : 'hit';
+  }
+  
+  if (value === 6) {
+    if (canDoubleSoft(rules) && [3, 4, 5, 6].includes(dealer)) {
+      return 'double';
+    }
+    return 'hit';
+  }
+  
+  if (value === 5 || value === 4) {
+    if (canDoubleSoft(rules) && [4, 5, 6].includes(dealer)) {
+      return 'double';
+    }
+    return 'hit';
+  }
+  
+  if (value === 3 || value === 2) {
+    if (canDoubleSoft(rules) && [5, 6].includes(dealer)) {
+      return 'double';
+    }
+    return 'hit';
+  }
+  
+  return 'hit';
+}
+
+function getPairStrategy(pairCard, dealer, rules) {
+  const card = pairCard === 'A' ? 'A' : parseInt(pairCard);
+  
+  if (card === 'A') return 'split';
+  if (card === 10 && !rules.splitTens) return 'stand';
+  if (card === 10) return 'stand';
+  
+  if (card === 9) {
+    return [2, 3, 4, 5, 6, 8, 9].includes(dealer) ? 'split' : 'stand';
+  }
+  
+  if (card === 8) return 'split';
+  
+  if (card === 7) {
+    return [2, 3, 4, 5, 6, 7].includes(dealer) ? 'split' : 'hit';
+  }
+  
+  if (card === 6) {
+    if (rules.das) {
+      return [2, 3, 4, 5, 6].includes(dealer) ? 'split' : 'hit';
+    }
+    return 'hit';
+  }
+  
+  if (card === 5) {
+    // Treat as hard 10
+    if (canDouble(10, rules)) {
+      return [2, 3, 4, 5, 6, 7, 8, 9].includes(dealer) ? 'double' : 'hit';
+    }
+    return 'hit';
+  }
+  
+  if (card === 4) {
+    if (rules.das && [5, 6].includes(dealer)) {
+      return 'split';
+    }
+    return 'hit';
+  }
+  
+  if (card === 3 || card === 2) {
+    if (rules.das && [2, 3, 4, 5, 6, 7].includes(dealer)) {
+      return 'split';
+    }
+    return 'hit';
+  }
+  
+  return 'hit';
+}
+
+function canDouble(total, rules) {
+  if (rules.doubleAllowed === 'any') return true;
+  if (rules.doubleAllowed === '9-11') return total >= 9 && total <= 11;
+  if (rules.doubleAllowed === '10-11') return total >= 10 && total <= 11;
+  if (rules.doubleAllowed === '8-11') return total >= 8 && total <= 11;
+  return false;
+}
+
+function canDoubleSoft(rules) {
+  return rules.doubleSoft && rules.doubleAllowed === 'any';
+}
+
+export function applyCountingDeviations(baseAction, handType, handValue, dealerCard, trueCount, rules) {
+  // CSM disables deviations
+  if (rules.csm) return baseAction;
+  
+  const dealer = dealerCard === 'A' ? 'A' : parseInt(dealerCard);
+  const tcRounded = Math.round(trueCount);
+  
+  // Check insurance first
+  if (dealer === 'A' && rules.insurance && tcRounded >= 3) {
+    return { action: baseAction, takeInsurance: true };
+  }
+  
+  // Apply Illustrious 18
+  for (const deviation of ILLUSTRIOUS_18) {
+    if (deviation.hand === 'insurance') continue; // Already handled
+    
+    const matchesHand = deviation.hand === handValue;
+    const matchesType = !deviation.handType || deviation.handType === handType;
+    const matchesDealer = deviation.dealer === dealer || deviation.dealer === dealerCard;
+    
+    if (matchesHand && matchesType && matchesDealer) {
+      if (tcRounded >= deviation.tc) {
+        return { action: deviation.action, takeInsurance: false };
+      }
+    }
+  }
+  
+  return { action: baseAction, takeInsurance: false };
+}
+
+export function generateStrategyResponse(handType, handValue, dealerCard, trueCount, rules) {
+  const baseAction = getBasicStrategyAction(handType, handValue, dealerCard, rules);
+  const { action: finalAction, takeInsurance } = applyCountingDeviations(
+    baseAction, handType, handValue, dealerCard, trueCount, rules
+  );
+  
+  const baseHouseEdge = calculateBaseHouseEdge(rules);
+  const countAdjustedEV = calculateCountAdjustedEV(baseHouseEdge, trueCount, rules);
+  const recommendedBetUnits = getRecommendedBetUnits(trueCount, rules);
+  
+  // Build reasoning
+  let reasoning = '';
+  
+  if (rules.csm) {
+    reasoning = 'CSM detected - card counting disabled. Using basic strategy only.';
+  } else if (trueCount >= 2) {
+    reasoning = `Positive count (TC +${trueCount.toFixed(1)}) - favorable conditions. `;
+  } else if (trueCount <= -2) {
+    reasoning = `Negative count (TC ${trueCount.toFixed(1)}) - unfavorable. Consider Wonging out. `;
+  } else {
+    reasoning = 'Neutral count - following basic strategy. ';
+  }
+  
+  if (finalAction !== baseAction) {
+    reasoning += `Count deviation: ${baseAction} → ${finalAction}. `;
+  }
+  
+  if (takeInsurance) {
+    reasoning += 'Take insurance (TC ≥ +3). ';
+  }
+  
+  // Add rule-specific notes
+  if (rules.holeCardRule === 'ealob') {
+    reasoning += 'EALOB rule active - extra caution on doubles/splits. ';
+  }
+  
+  if (rules.blackjackPays === 1.2) {
+    reasoning += 'WARNING: 6:5 payout severely impacts EV. ';
+  }
+  
+  return {
+    recommended_action: finalAction,
+    take_insurance: takeInsurance,
+    ev: parseFloat(countAdjustedEV.toFixed(2)),
+    house_edge_base: parseFloat(baseHouseEdge.toFixed(2)),
+    true_count: parseFloat(trueCount.toFixed(1)),
+    count_adjusted_ev: parseFloat(countAdjustedEV.toFixed(2)),
+    recommended_bet_units: recommendedBetUnits,
+    reasoning: reasoning.trim()
+  };
+}
+
+function calculateBaseHouseEdge(rules) {
+  // Import from RulesEngine
+  let houseEdge = 0.48;
+  const deckDiff = 6 - rules.numDecks;
+  houseEdge -= deckDiff * 0.06;
+  if (rules.dealerHitsSoft17) houseEdge += 0.20;
+  if (rules.blackjackPays === 1.2) houseEdge += 1.39;
+  else if (rules.blackjackPays === 1.0) houseEdge += 2.30;
+  else if (rules.blackjackPays === 2.0) houseEdge -= 0.70;
+  if (rules.holeCardRule === 'enhc') houseEdge += 0.11;
+  else if (rules.holeCardRule === 'ealob') houseEdge += 0.20;
+  if (!rules.doubleSoft) houseEdge += 0.14;
+  if (rules.doubleAllowed === '10-11') houseEdge += 0.28;
+  else if (rules.doubleAllowed === '9-11') houseEdge += 0.15;
+  else if (rules.doubleAllowed === '8-11') houseEdge += 0.10;
+  if (!rules.das) houseEdge += 0.14;
+  if (!rules.resplitAces) houseEdge += 0.07;
+  if (!rules.hitSplitAces) houseEdge += 0.19;
+  if (rules.bjAfterSplitCountsAsBJ) houseEdge -= 0.12;
+  if (rules.surrender === 'late') houseEdge -= 0.07;
+  else if (rules.surrender === 'early-10') houseEdge -= 0.24;
+  else if (rules.surrender === 'early-ace') houseEdge -= 0.39;
+  else if (rules.surrender === 'early-both') houseEdge -= 0.63;
+  if (rules.nmse) houseEdge += 0.04;
+  if (rules.push22) houseEdge += 1.40;
+  return houseEdge;
+}
+
+function calculateCountAdjustedEV(baseHouseEdge, trueCount, rules) {
+  if (rules.csm) return -baseHouseEdge;
+  const countAdvantage = trueCount * 0.5;
+  return countAdvantage - baseHouseEdge;
+}
+
+function getRecommendedBetUnits(trueCount, rules) {
+  if (rules.csm) return 1;
+  if (trueCount <= 0) return 0;
+  if (trueCount === 1) return 1;
+  if (trueCount === 2) return 2;
+  if (trueCount === 3) return 4;
+  if (trueCount === 4) return 6;
+  if (trueCount >= 5) return 8;
+  return 1;
+}
